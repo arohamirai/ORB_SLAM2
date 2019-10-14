@@ -239,6 +239,7 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
         }
+        // 从此刻重新开始局部建图(前提是定位模式没有丢)
         if(mbDeactivateLocalizationMode)
         {
             mpTracker->InformOnlyTracking(false);
