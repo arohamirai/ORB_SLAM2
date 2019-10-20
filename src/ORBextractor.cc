@@ -546,7 +546,6 @@ void ExtractorNode::DivideNode(ExtractorNode& n1, ExtractorNode& n2, ExtractorNo
 }
 
 // TODO:
-// 1. octtree 划分的范围怎么跟预想不一样？
 // 2. lNodes.front().lit 用来干嘛？
 vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>& vToDistributeKeys,
                                                      const int& minX, const int& maxX,
@@ -569,6 +568,7 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
     ExtractorNode ni;
     ni.UL = cv::Point2i(hX * static_cast<float>(i), 0);
     ni.UR = cv::Point2i(hX * static_cast<float>(i + 1), 0);
+    // vToDistributeKeys 保存的点坐标是在[(minBorderX, minBorderY), (maxBorderX, maxBorderY)]图像的坐标，非原始图像坐标
     ni.BL = cv::Point2i(ni.UL.x, maxY - minY);
     ni.BR = cv::Point2i(ni.UR.x, maxY - minY);
     ni.vKeys.reserve(vToDistributeKeys.size());
@@ -807,6 +807,8 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint>>& allKeypoint
     const int maxBorderX = mvImagePyramid[level].cols - EDGE_THRESHOLD + 3;
     const int maxBorderY = mvImagePyramid[level].rows - EDGE_THRESHOLD + 3;
 
+    // vToDistributeKeys 保存的点坐标是在[(minBorderX, minBorderY), (maxBorderX, maxBorderY)]图像的坐标，
+    // 相对于每层的原始图像有个(minBorderX, minBorderY) 偏移
     vector<cv::KeyPoint> vToDistributeKeys;
     vToDistributeKeys.reserve(nfeatures * 10);
 
@@ -823,6 +825,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint>>& allKeypoint
     for (int i = 0; i < nRows; i++)
     {
       const float iniY = minBorderY + i * hCell;
+      //这里注意cell之间有6行的重叠
       float maxY = iniY + hCell + 6;
       //窗口的行上坐标超出边界，则放弃此行
       if (iniY >= maxBorderY - 3)
@@ -874,6 +877,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint>>& allKeypoint
     const int scaledPatchSize = PATCH_SIZE * mvScaleFactor[level];
 
     // Add border to coordinates and scale information
+    // 计算特征点在每层图像上的实际坐标（加上border偏移）
     const int nkps = keypoints.size();
     for (int i = 0; i < nkps; i++)
     {
