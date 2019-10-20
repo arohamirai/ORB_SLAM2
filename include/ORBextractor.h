@@ -37,7 +37,9 @@ public:
     void DivideNode(ExtractorNode &n1, ExtractorNode &n2, ExtractorNode &n3, ExtractorNode &n4);
 
     std::vector<cv::KeyPoint> vKeys;
+    //四叉树，四个区域左上(UL)，右上(UR)，左下(BL)，右下(BR)
     cv::Point2i UL, UR, BL, BR;
+    // 用来干嘛？
     std::list<ExtractorNode>::iterator lit;
     bool bNoMore;
 };

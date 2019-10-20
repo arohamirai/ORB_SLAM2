@@ -485,6 +485,7 @@ static void computeOrientation(const Mat& image, vector<KeyPoint>& keypoints,
   }
 }
 
+// 节点分裂
 void ExtractorNode::DivideNode(ExtractorNode& n1, ExtractorNode& n2, ExtractorNode& n3,
                                ExtractorNode& n4)
 {
@@ -516,6 +517,7 @@ void ExtractorNode::DivideNode(ExtractorNode& n1, ExtractorNode& n2, ExtractorNo
   n4.BR = BR;
   n4.vKeys.reserve(vKeys.size());
 
+  // 关键点分配到子节点中去
   // Associate points to childs
   for (size_t i = 0; i < vKeys.size(); i++)
   {
@@ -543,6 +545,9 @@ void ExtractorNode::DivideNode(ExtractorNode& n1, ExtractorNode& n2, ExtractorNo
     n4.bNoMore = true;
 }
 
+// TODO:
+// 1. octtree 划分的范围怎么跟预想不一样？
+// 2. lNodes.front().lit 用来干嘛？
 vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>& vToDistributeKeys,
                                                      const int& minX, const int& maxX,
                                                      const int& minY, const int& maxY, const int& N,
@@ -575,11 +580,15 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
   for (size_t i = 0; i < vToDistributeKeys.size(); i++)
   {
     const cv::KeyPoint& kp = vToDistributeKeys[i];
+    // 按x方向分配grid
     vpIniNodes[kp.pt.x / hX]->vKeys.push_back(kp);
   }
 
   list<ExtractorNode>::iterator lit = lNodes.begin();
 
+  //现在lNodes中只放有根节点，变量根节点，如果根节点中关键点个数为1
+  //那么设置这个节点的bNoMore = 1，表示这个节点不能再分裂了。
+  //如果为空，那么就删除这个节点
   while (lit != lNodes.end())
   {
     if (lit->vKeys.size() == 1)
@@ -612,6 +621,7 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
 
     vSizeAndPointerToNode.clear();
 
+    // lit 向前增长，向后迭代
     while (lit != lNodes.end())
     {
       if (lit->bNoMore)
@@ -627,6 +637,9 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
         lit->DivideNode(n1, n2, n3, n4);
 
         // Add childs if they contain points
+        //如果节点n1的关键点数量大于0，将其插入lNodes的**前面**
+        //如果节点n1的关键点数量大于1，将其插入vSizeAndPointerToNode中表示待分裂
+        //后面n2,n3,n4以此类推
         if (n1.vKeys.size() > 0)
         {
           lNodes.push_front(n1);
@@ -668,6 +681,7 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
           }
         }
 
+        //节点分裂后，将此被分裂的节点删除
         lit = lNodes.erase(lit);
         continue;
       }
@@ -679,9 +693,10 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
     {
       bFinish = true;
     }
+    //待分裂的节点数vSizeAndPointerToNode分裂后，一般会增加nToExpand*3，
+    //如果增加nToExpand*3后大于N，则进入此分支
     else if ((( int )lNodes.size() + nToExpand * 3) > N)
     {
-
       while (!bFinish)
       {
 
@@ -690,7 +705,9 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
         vector<pair<int, ExtractorNode*>> vPrevSizeAndPointerToNode = vSizeAndPointerToNode;
         vSizeAndPointerToNode.clear();
 
+        //也就是根据待分裂节点的关键点数量大小来有小到大排序，默认升序
         sort(vPrevSizeAndPointerToNode.begin(), vPrevSizeAndPointerToNode.end());
+        //倒叙遍历vPrevSizeAndPointerToNode，也先分裂待分裂节点的关键点数量大的
         for (int j = vPrevSizeAndPointerToNode.size() - 1; j >= 0; j--)
         {
           ExtractorNode n1, n2, n3, n4;
@@ -733,13 +750,16 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
               lNodes.front().lit = lNodes.begin();
             }
           }
-
+          //删除被分裂的节点
           lNodes.erase(vPrevSizeAndPointerToNode[j].second->lit);
 
+          //lNodes节点数量大于等于需要的特征点数(N),就不在继续往下分裂了
           if (( int )lNodes.size() >= N)
             break;
         }
 
+        //lNodes节点数量大于等于需要的特征点数(N),或者lNodes中节点所有节点的关键点数量都为1，
+        //标志 bFinish，结束循环
         if (( int )lNodes.size() >= N || ( int )lNodes.size() == prevSize)
           bFinish = true;
       }
@@ -747,6 +767,7 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
   }
 
   // Retain the best point in each node
+  // 取出每个节点中响应最大的特征点（单个节点可能还会有多余两个特征点，但只取响应最大的）
   vector<cv::KeyPoint> vResultKeys;
   vResultKeys.reserve(nfeatures);
   for (list<ExtractorNode>::iterator lit = lNodes.begin(); lit != lNodes.end(); lit++)
@@ -802,9 +823,10 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint>>& allKeypoint
     {
       const float iniY = minBorderY + i * hCell;
       float maxY = iniY + hCell + 6;
-
+      //窗口的行上坐标超出边界，则放弃此行
       if (iniY >= maxBorderY - 3)
         continue;
+      //窗口的行下坐标超出边界，则将窗口的行下坐标设置为边界
       if (maxY > maxBorderY)
         maxY = maxBorderY;
 
