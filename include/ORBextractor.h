@@ -94,6 +94,7 @@ protected:
     void ComputeKeyPointsOld(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);
     std::vector<cv::Point> pattern;
 
+    // 总特征点数
     int nfeatures;
     double scaleFactor;
     int nlevels;

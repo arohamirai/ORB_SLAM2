@@ -818,6 +818,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint>>& allKeypoint
           maxX = maxBorderX;
 
         vector<cv::KeyPoint> vKeysCell;
+        // 每个cell求FAST角点
         FAST(mvImagePyramid[level].rowRange(iniY, maxY).colRange(iniX, maxX), vKeysCell, iniThFAST,
              true);
 
@@ -827,6 +828,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint>>& allKeypoint
                minThFAST, true);
         }
 
+        // 如果最小阈值都不能求到角点，那就真没有角点了
         if (!vKeysCell.empty())
         {
           for (vector<cv::KeyPoint>::iterator vit = vKeysCell.begin(); vit != vKeysCell.end();
@@ -838,7 +840,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint>>& allKeypoint
           }
         }
       }
-    }
+    } // 迭代cells完成
 
     vector<KeyPoint>& keypoints = allKeypoints[level];
     keypoints.reserve(nfeatures);
@@ -1124,6 +1126,7 @@ void ORBextractor::ComputePyramid(cv::Mat image)
     {
       resize(mvImagePyramid[level - 1], mvImagePyramid[level], sz, 0, 0, INTER_LINEAR);
 
+      // 目前看起来这语句没什么用，是否跟masktemp没用起来有关？
       copyMakeBorder(mvImagePyramid[level], temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
                      EDGE_THRESHOLD, BORDER_REFLECT_101 + BORDER_ISOLATED);
     }
