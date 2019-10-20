@@ -71,6 +71,7 @@ const int PATCH_SIZE = 31;
 const int HALF_PATCH_SIZE = 15;
 const int EDGE_THRESHOLD = 19;
 
+//灰度质心法（IC）计算特征的旋转
 static float IC_Angle(const Mat& image, Point2f pt, const vector<int>& u_max)
 {
   int m_01 = 0, m_10 = 0;
@@ -110,10 +111,12 @@ static void computeOrbDescriptor(const KeyPoint& kpt, const Mat& img, const Poin
   const uchar* center = &img.at<uchar>(cvRound(kpt.pt.y), cvRound(kpt.pt.x));
   const int step = ( int )img.step;
 
-#define GET_VALUE(idx)                                           \
+  //利用关键点的方向信息进行了旋转矫正
+  #define GET_VALUE(idx)                                           \
   center[cvRound(pattern[idx].x * b + pattern[idx].y * a) * step \
          + cvRound(pattern[idx].x * a - pattern[idx].y * b)]
 
+  // 循环32次，pattern取值16*32=512,也即每次取16个点，共形成8个点对，8个点对比较可以形成8bit（1 byte）长度的特征描述数据
   for (int i = 0; i < 32; ++i, pattern += 16)
   {
     int t0, t1, val;
@@ -142,12 +145,13 @@ static void computeOrbDescriptor(const KeyPoint& kpt, const Mat& img, const Poin
     t1 = GET_VALUE(15);
     val |= (t0 < t1) << 7;
 
-    desc[i] = ( uchar )val;
+    desc[i] = ( uchar )val; //一共32*8维描述子
   }
 
 #undef GET_VALUE
 }
-
+///<该数组存储的是通过学习后选取的256个点对（512点）相对(特征点）的位置，bit_pattern_31_中每四个元素分别表示pair_l.x，pair_l.y,pair_r.x,pair_r.y;
+///<共256个点对,产生256维描述子,256维度描述子长度共32个字节。
 static int bit_pattern_31_[256 * 4] = {
   8,   -3,  9,   5 /*mean (0), correlation (0)*/,
   4,   2,   7,   -12 /*mean (1.12461e-05), correlation (0.0437584)*/,
@@ -459,6 +463,8 @@ ORBextractor::ORBextractor(int _nfeatures, float _scaleFactor, int _nlevels, int
   // pre-compute the end of a row in a circular patch
   umax.resize(HALF_PATCH_SIZE + 1);
 
+  // 具体原理还没搞懂，先贴个资料
+  //http://silverwind1982.pixnet.net/blog/post/327723418
   int v, v0, vmax = cvFloor(HALF_PATCH_SIZE * sqrt(2.f) / 2 + 1);
   int vmin = cvCeil(HALF_PATCH_SIZE * sqrt(2.f) / 2);
   const double hp2 = HALF_PATCH_SIZE * HALF_PATCH_SIZE;
@@ -1126,6 +1132,7 @@ void ORBextractor::operator()(InputArray _image, InputArray _mask, vector<KeyPoi
     offset += nkeypointsLevel;
 
     // Scale keypoint coordinates
+    // 对关键点的位置坐做尺度恢复，恢复到原图的位置
     if (level != 0)
     {
       float scale = mvScaleFactor[level];  // getScale(level, firstLevel, scaleFactor);
