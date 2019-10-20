@@ -112,6 +112,7 @@ static void computeOrbDescriptor(const KeyPoint& kpt, const Mat& img, const Poin
   const int step = ( int )img.step;
 
   //利用关键点的方向信息进行了旋转矫正
+  // 左乘变换算子
   #define GET_VALUE(idx)                                           \
   center[cvRound(pattern[idx].x * b + pattern[idx].y * a) * step \
          + cvRound(pattern[idx].x * a - pattern[idx].y * b)]
