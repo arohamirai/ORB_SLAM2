@@ -182,8 +182,9 @@ protected:
     Map* mpMap;
 
     //Calibration matrix
-    cv::Mat mK;
-    cv::Mat mDistCoef;
+    cv::Mat mK;     //  相机内参
+    cv::Mat mDistCoef;  // 相机畸变参数
+    // Stereo baseline multiplied by fx.
     float mbf;
 
     //New KeyFrame rules (according to fps)

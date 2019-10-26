@@ -38,6 +38,11 @@ class ORBmatcher
 {    
 public:
 
+    /**
+     * Constructor
+     * @param nnratio  ratio of the best and the second score
+     * @param checkOri check orientation
+     */
     ORBmatcher(float nnratio=0.6, bool checkOri=true);
 
     // Computes the Hamming distance between two ORB descriptors

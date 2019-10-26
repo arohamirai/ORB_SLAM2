@@ -405,6 +405,7 @@ int ORBmatcher::SearchByProjection(KeyFrame* pKF, cv::Mat Scw, const vector<MapP
 int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f> &vbPrevMatched, vector<int> &vnMatches12, int windowSize)
 {
     int nmatches=0;
+    //储存F1中匹配成功的点在F2中的序号
     vnMatches12 = vector<int>(F1.mvKeysUn.size(),-1);
 
     vector<int> rotHist[HISTO_LENGTH];
@@ -412,13 +413,16 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
         rotHist[i].reserve(500);
     const float factor = 1.0f/HISTO_LENGTH;
 
+    // 存储F2中特征点离F1特征点的最小距离
     vector<int> vMatchedDistance(F2.mvKeysUn.size(),INT_MAX);
+    //储存F2中匹配成功的点在F1中的序号
     vector<int> vnMatches21(F2.mvKeysUn.size(),-1);
 
     for(size_t i1=0, iend1=F1.mvKeysUn.size(); i1<iend1; i1++)
     {
         cv::KeyPoint kp1 = F1.mvKeysUn[i1];
         int level1 = kp1.octave;
+        //只处理第0层的特征点
         if(level1>0)
             continue;
 
@@ -429,8 +433,8 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
 
         cv::Mat d1 = F1.mDescriptors.row(i1);
 
-        int bestDist = INT_MAX;
-        int bestDist2 = INT_MAX;
+        int bestDist = INT_MAX;     // 最佳匹配距离
+        int bestDist2 = INT_MAX;    // 第二最佳匹配距离
         int bestIdx2 = -1;
 
         for(vector<size_t>::iterator vit=vIndices2.begin(); vit!=vIndices2.end(); vit++)
@@ -441,6 +445,7 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
 
             int dist = DescriptorDistance(d1,d2);
 
+            // 如果之前的匹配结果更好（），则继续迭代
             if(vMatchedDistance[i2]<=dist)
                 continue;
 
@@ -458,8 +463,12 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
 
         if(bestDist<=TH_LOW)
         {
+            //最小距离bestDist，与次小距离相距要有足够的区分度（用mfNNratio描述其阈值）
             if(bestDist<(float)bestDist2*mfNNratio)
             {
+                //其他的F2中的编号为bestIdx2的特征点已经与F1中其他特征点配对了，则形成冲突，于是删除之前的配对，
+                //将其他的F2中的编号为bestIdx2的特征点重新分配给当前F1中的特征点
+                //（这样处理没问题，因为前面已经确定了F1中当前点肯定比之前的点离F2中的编号为bestIdx2的特征点更近）
                 if(vnMatches21[bestIdx2]>=0)
                 {
                     vnMatches12[vnMatches21[bestIdx2]]=-1;
@@ -470,6 +479,7 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
                 vMatchedDistance[bestIdx2]=bestDist;
                 nmatches++;
 
+                //将i1按照匹配点角度差范围划分到rotHist中
                 if(mbCheckOrientation)
                 {
                     float rot = F1.mvKeysUn[i1].angle-F2.mvKeysUn[bestIdx2].angle;
@@ -485,7 +495,10 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
         }
 
     }
-
+    //其实这里的意思是，F1与F2之间匹配点的角度差应该差不多是一致的
+    //于是我们就将匹配点，按照匹配点间的角度差来分成HISTO_LENGTH类，放在rotHist
+    //然后剔除，那些角度差和其他大多数匹配点角度差差异较大的点
+    //具体就是，先找出前3多的角度差范围，然后剔除那些不在这些角度差范围的匹配点
     if(mbCheckOrientation)
     {
         int ind1=-1;
@@ -498,6 +511,7 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
         {
             if(i==ind1 || i==ind2 || i==ind3)
                 continue;
+            // 不在前3多的角度差范围， 认为匹配效果不好，剔除
             for(size_t j=0, jend=rotHist[i].size(); j<jend; j++)
             {
                 int idx1 = rotHist[i][j];
@@ -1597,12 +1611,12 @@ int ORBmatcher::SearchByProjection(Frame &CurrentFrame, KeyFrame *pKF, const set
 
     return nmatches;
 }
-
+// 取出直方图中值最大的三个index
 void ORBmatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int &ind1, int &ind2, int &ind3)
 {
-    int max1=0;
-    int max2=0;
-    int max3=0;
+    int max1=0;     // 第一多
+    int max2=0;     // 第二多
+    int max3=0;     // 第三多
 
     for(int i=0; i<L; i++)
     {
@@ -1630,6 +1644,7 @@ void ORBmatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int &ind1, 
         }
     }
 
+    // 相差太多，则只保留前面更多的，后面的不保留了
     if(max2<0.1f*(float)max1)
     {
         ind2=-1;
