@@ -40,7 +40,15 @@ Initializer::Initializer(const Frame &ReferenceFrame, float sigma, int iteration
     mSigma2 = sigma*sigma;
     mMaxIterations = iterations;
 }
-
+/**
+* 开启初始化
+* @param CurrentFrame 当前帧
+* @param vMatches12 orbmatcher计算的初匹配
+* @param R21
+* @param t21
+* @param vP3D 其大小为vKeys1大小，表示三角化重投影成功的匹配点的3d点在相机1下的坐标
+* @param vbTriangulated  其大小为vKeys1大小，表示初始化成功后，特征点中三角化投影成功的情况
+*/
 bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatches12, cv::Mat &R21, cv::Mat &t21,
                              vector<cv::Point3f> &vP3D, vector<bool> &vbTriangulated)
 {
@@ -91,6 +99,7 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
 
             mvSets[it][j] = idx;
 
+            // 防止点集中出现重复点
             vAvailableIndices[randi] = vAvailableIndices.back();
             vAvailableIndices.pop_back();
         }
@@ -157,9 +166,11 @@ void Initializer::FindHomography(vector<bool> &vbMatchesInliers, float &score, c
         }
 
         cv::Mat Hn = ComputeH21(vPn1i,vPn2i);
+        //恢复原始的均值和尺度
         H21i = T2inv*Hn*T1;
         H12i = H21i.inv();
 
+        // 利用重投影误差为当次RANSAC的结果评分
         currentScore = CheckHomography(H21i, H12i, vbCurrentInliers, mSigma);
 
         if(currentScore>score)
@@ -222,13 +233,40 @@ void Initializer::FindFundamental(vector<bool> &vbMatchesInliers, float &score, 
     }
 }
 
-
+/**
+ * @brief 从特征点匹配求homography（normalized DLT）
+ *
+ * @param  vP1 归一化后的点, in reference frame
+ * @param  vP2 归一化后的点, in current frame
+ * @return     单应矩阵
+ * @see        Multiple View Geometry in Computer Vision - Algorithm 4.2 p109
+ * 推导：（Markdown语法解析器：typora）
+ DLT是一个 用于解决包含尺度问题的最小二乘问题的算法。假设两幅图像中的两个对应特征点(x,y,1)以及(u,v,1),用单应变换计算两者之间的关系。
+$$
+c\left(\begin{array}{l}{u} \\ {v} \\ {1}\end{array}\right)=H\left(\begin{array}{l}{x} \\ {y} \\ {1}\end{array}\right)
+$$
+ $H$是个3×3的矩阵，有8个自由度，所以待求未知参数有8个。  把公式展开：
+$$
+\begin{array}{l}{-h_{1} x-h_{2} y-h_{3}+\left(h_{7} x+h_{8} y+h_{9}\right) u=0} \\ {-h_{4} x-h_{5} y-h_{6}+\left(h_{7} x+h_{8} y+h_{9}\right) v=0}\end{array}
+$$
+写成线性方程组的形式
+$$
+Ax = 0
+$$
+其中
+$$
+\begin{aligned} A &=\left(\begin{array}{cccccccc}{-x} & {-y} & {-1} & {0} & {0} & {0} & {u x} & {u y} & {u} \\ {0} & {0} & {0} & {-x} & {-y} & {-1} & {v x} & {v y} & {v} \end{array}\right) \\ h &=\left(\begin{array}{llllllll}{h_{1}} & {h_{2}} & {h_{3}} & {h_{4}} & {h_{5}} & {h_{6}} & {h_{7}} & {h_{8}} & {h_{9}}\end{array}\right) \end{aligned}
+$$
+ 由未知变量的个数可知，求解出H至少需要4对匹配点。通常情况下为了得到更稳定的结果，会用到多于4对的特征匹配。所以，这个方程会变成超定的，可以将最小二乘解作为最后的解。对A进行SVD分解就可以得到单应矩阵。
+ */
 cv::Mat Initializer::ComputeH21(const vector<cv::Point2f> &vP1, const vector<cv::Point2f> &vP2)
 {
     const int N = vP1.size();
 
     cv::Mat A(2*N,9,CV_32F);
 
+    //最少用4个点对就可以解出单应矩阵，但是这里依然用的是8个点对（本质矩阵和基础矩阵的分解需要8对点）
+    // c*P2 = H * P1
     for(int i=0; i<N; i++)
     {
         const float u1 = vP1[i].x;
@@ -260,8 +298,17 @@ cv::Mat Initializer::ComputeH21(const vector<cv::Point2f> &vP1, const vector<cv:
 
     cv::Mat u,w,vt;
 
+    // ref: https://www.cnblogs.com/endlesscoding/p/10033527.html
+    // ref: https://zhuanlan.zhihu.com/p/29846048
+    // ref: http://www-users.math.umn.edu/~lerman/math5467/svd.pdf
     cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
-
+    /**
+    齐次线性方程Ax=0 A的行数大于列数**
+    $$
+    \begin{array}{c}{\min \|A x\|} \\ {\text {st.} AX=0\\\|x\|=1}\end{array}
+    $$
+    此时，最小二乘解为$A^{T}A$最小特征值对应的特征向量。
+    */
     return vt.row(8).reshape(0, 3);
 }
 
@@ -303,7 +350,7 @@ cv::Mat Initializer::ComputeF21(const vector<cv::Point2f> &vP1,const vector<cv::
 }
 
 float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vector<bool> &vbMatchesInliers, float sigma)
-{   
+{
     const int N = mvMatches12.size();
 
     const float h11 = H21.at<float>(0,0);
@@ -481,7 +528,7 @@ bool Initializer::ReconstructF(vector<bool> &vbMatchesInliers, cv::Mat &F21, cv:
     cv::Mat R1, R2, t;
 
     // Recover the 4 motion hypotheses
-    DecomposeE(E21,R1,R2,t);  
+    DecomposeE(E21,R1,R2,t);
 
     cv::Mat t1=t;
     cv::Mat t2=-t;
@@ -687,7 +734,7 @@ bool Initializer::ReconstructH(vector<bool> &vbMatchesInliers, cv::Mat &H21, cv:
 
 
     int bestGood = 0;
-    int secondBestGood = 0;    
+    int secondBestGood = 0;
     int bestSolutionIdx = -1;
     float bestParallax = -1;
     vector<cv::Point3f> bestP3D;
@@ -745,7 +792,16 @@ void Initializer::Triangulate(const cv::KeyPoint &kp1, const cv::KeyPoint &kp2, 
     x3D = vt.row(3).t();
     x3D = x3D.rowRange(0,3)/x3D.at<float>(3);
 }
-
+/**
+ * ＠brief 归一化特征点到同一尺度（作为normalize DLT的输入），使得归一化后的坐标点集合均值为0，一阶绝对矩为1
+ * 有尺度缩放，使得优化cost函数尺度相同
+ * [x' y' 1]' = T * [x y 1]' \n
+ * 归一化后x', y'的均值为0，sum(abs(x_i'-0))=1，sum(abs((y_i'-0))=1
+ *
+ * @param vKeys             特征点在图像上的坐标
+ * @param vNormalizedPoints 特征点归一化后的坐标
+ * @param T                 将特征点归一化的矩阵（vNormalizedPoints=T*vKeys）
+ */
 void Initializer::Normalize(const vector<cv::KeyPoint> &vKeys, vector<cv::Point2f> &vNormalizedPoints, cv::Mat &T)
 {
     float meanX = 0;
