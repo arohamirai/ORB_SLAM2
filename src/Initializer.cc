@@ -172,7 +172,7 @@ void Initializer::FindHomography(vector<bool> &vbMatchesInliers, float &score, c
 
         // 利用重投影误差为当次RANSAC的结果评分
         currentScore = CheckHomography(H21i, H12i, vbCurrentInliers, mSigma);
-
+        // 分数越高越好
         if(currentScore>score)
         {
             H21 = H21i.clone();
@@ -318,6 +318,9 @@ cv::Mat Initializer::ComputeF21(const vector<cv::Point2f> &vP1,const vector<cv::
 
     cv::Mat A(N,9,CV_32F);
 
+    //基于对极约束的八点法计算F
+    //对极约束： $\boldsymbol{p}_{2}^{T} \boldsymbol{K}^{-T} \boldsymbol{t}^{\wedge} \boldsymbol{R} \boldsymbol{K}^{-1} \boldsymbol{p}_{1}=0$
+    // 其中p1,p2为两帧图像上的匹配点对(像素)
     for(int i=0; i<N; i++)
     {
         const float u1 = vP1[i].x;
@@ -338,12 +341,22 @@ cv::Mat Initializer::ComputeF21(const vector<cv::Point2f> &vP1,const vector<cv::
 
     cv::Mat u,w,vt;
 
+    //用SVD算出基础矩阵F
     cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
 
+    /**
+    齐次线性方程Ax=0 A的行数大于列数**
+    $$
+    \begin{array}{c}{\min \|A x\|} \\ {\text {st.} AX=0\\\|x\|=1}\end{array}
+    $$
+    此时，最小二乘解为$A^{T}A$最小特征值对应的特征向量。
+    */
     cv::Mat Fpre = vt.row(8).reshape(0, 3);
 
+    //将基础矩阵svd分解
     cv::SVDecomp(Fpre,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
 
+    //基础矩阵F(或本质矩阵E)的内在性质据决定其奇异值分解是[sigma, sigma, 0]
     w.at<float>(2)=0;
 
     return  u*cv::Mat::diag(w)*vt;
@@ -377,6 +390,7 @@ float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vecto
 
     float score = 0;
 
+    //判断通过单应矩阵重投影是否成功的阈值
     const float th = 5.991;
 
     const float invSigmaSquare = 1.0/(sigma*sigma);
@@ -401,7 +415,7 @@ float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vecto
         const float v2in1 = (h21inv*u2+h22inv*v2+h23inv)*w2in1inv;
 
         const float squareDist1 = (u1-u2in1)*(u1-u2in1)+(v1-v2in1)*(v1-v2in1);
-
+        // 利用类似高斯分布分配权重
         const float chiSquare1 = squareDist1*invSigmaSquare;
 
         if(chiSquare1>th)
@@ -452,7 +466,9 @@ float Initializer::CheckFundamental(const cv::Mat &F21, vector<bool> &vbMatchesI
 
     float score = 0;
 
+    // outlier点阈值（单应性矩阵阈值是5.991）
     const float th = 3.841;
+    //判断通过单应矩阵重投影是否成功的阈值
     const float thScore = 5.991;
 
     const float invSigmaSquare = 1.0/(sigma*sigma);
