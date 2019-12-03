@@ -632,6 +632,40 @@ bool Initializer::ReconstructF(vector<bool> &vbMatchesInliers, cv::Mat &F21, cv:
     return false;
 }
 
+/**
+* 从单应矩阵H21恢复旋转矩阵R和平移向量t
+*
+* // Faugeras et al, Motion and structure from motion in a piecewise planar environment.
+  International Journal of Pattern Recognition and Artificial Intelligence, 1988.
+参考：
+ https://hal.archives-ouvertes.fr/inria-00075698/document
+ https://blog.csdn.net/kokerf/article/details/72885435
+ 吴博PPT
+
+p2   =  H21 * p1 = H21 * KP
+p2 = K( RP + t)  = KTP = H21 * KP
+T21 =  K^{-1} * H21*K
+在求得单应性变化H后，本文使用FAUGERAS的论文[1]的方法，提取8种运动假设。
+这个方法通过可视化约束来测试选择合理的解。但是如果在低视差的情况下，
+点云会跑到相机的前面或后面，测试就会出现错误从而选择一个错误的解。
+文中使用的是直接三角化 8种方案，检查两个相机前面具有较少的重投影误差情况下，
+在视图低视差情况下是否大部分云点都可以看到。如果没有一个解很合适，就不执行初始化，
+重新从第一步开始。这种方法在低视差和两个交叉的视图情况下，初始化程序更具鲁棒性。
+H矩阵分解常见有两种方法：Faugeras SVD-based decomposition 和 Zhang SVD-based decomposition
+参考文献：Motion and structure from motion in a piecewise plannar environment
+这篇参考文献和下面的代码使用了Faugeras SVD-based decomposition算法
+
+* @param vbMatchesInliers 匹配点中哪些可以通过H21重投影成功
+* @param H21 单应矩阵
+* @param K 内参
+* @param R21 输出
+* @param t21 输出
+* @param vP3D 其大小为vKeys1大小，表示三角化重投影成功的匹配点的3d点在相机1下的坐标
+* @param vbTriangulated 其大小为vKeys1大小，特征点中哪些可以通过H21重投影成功
+* @param minParallax 设置的最小视差角余弦值参数，输出Rt模型的视差角小于此值则返回失败
+* @param minTriangulated 匹配点中H21重投影成功的个数如果小于此值，返回失败
+* @return 通过输入的H21计算Rt是否成功
+*/
 bool Initializer::ReconstructH(vector<bool> &vbMatchesInliers, cv::Mat &H21, cv::Mat &K,
                       cv::Mat &R21, cv::Mat &t21, vector<cv::Point3f> &vP3D, vector<bool> &vbTriangulated, float minParallax, int minTriangulated)
 {
@@ -644,19 +678,23 @@ bool Initializer::ReconstructH(vector<bool> &vbMatchesInliers, cv::Mat &H21, cv:
     // Motion and structure from motion in a piecewise planar environment.
     // International Journal of Pattern Recognition and Artificial Intelligence, 1988
 
+    // 将H矩阵由图像坐标系变换到相机坐标系
     cv::Mat invK = K.inv();
+    // A = T21
     cv::Mat A = invK*H21*K;
 
     cv::Mat U,w,Vt,V;
     cv::SVD::compute(A,w,U,Vt,cv::SVD::FULL_UV);
     V=Vt.t();
-
+    //cv::determinant(U)为U的行列式
     float s = cv::determinant(U)*cv::determinant(Vt);
 
     float d1 = w.at<float>(0);
     float d2 = w.at<float>(1);
     float d3 = w.at<float>(2);
 
+    //注意d1>d2>d3
+    //看吴博讲解的ppt19页，只考虑d1!=d2!=d3的情况，其他情况返回失败
     if(d1/d2<1.00001 || d2/d3<1.00001)
     {
         return false;
@@ -668,12 +706,14 @@ bool Initializer::ReconstructH(vector<bool> &vbMatchesInliers, cv::Mat &H21, cv:
     vn.reserve(8);
 
     //n'=[x1 0 x3] 4 posibilities e1=e3=1, e1=1 e3=-1, e1=-1 e3=1, e1=e3=-1
+    // 法向量n'= [x1 0 x3] 对应ppt的公式17
     float aux1 = sqrt((d1*d1-d2*d2)/(d1*d1-d3*d3));
     float aux3 = sqrt((d2*d2-d3*d3)/(d1*d1-d3*d3));
     float x1[] = {aux1,aux1,-aux1,-aux1};
     float x3[] = {aux3,-aux3,aux3,-aux3};
 
     //case d'=d2
+    // 计算ppt中公式19
     float aux_stheta = sqrt((d1*d1-d2*d2)*(d2*d2-d3*d3))/((d1+d3)*d2);
 
     float ctheta = (d2*d2+d1*d3)/((d1+d3)*d2);
