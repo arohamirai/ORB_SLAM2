@@ -599,6 +599,11 @@ void Tracking::MonocularInitialization()
 
         // Find correspondences
         ORBmatcher matcher(0.9,true);
+        /**
+        * 在mInitialFrame与mCurrentFrame中找匹配的特征点对
+        * mvbPrevMatched为前一帧的特征点的坐标，存储了mInitialFrame中哪些点将进行接下来的匹配
+        * mvIniMatches用于存储mInitialFrame,mCurrentFrame之间匹配的特征点
+        */
         int nmatches = matcher.SearchForInitialization(mInitialFrame,mCurrentFrame,mvbPrevMatched,mvIniMatches,100);
 
         // Check if there are enough correspondences

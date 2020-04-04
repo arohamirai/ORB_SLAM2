@@ -110,7 +110,9 @@ bool Initializer::Initialize(const Frame &CurrentFrame, const vector<int> &vMatc
     float SH, SF;
     cv::Mat H, F;
 
+    // 平面假设
     thread threadH(&Initializer::FindHomography,this,ref(vbMatchesInliersH), ref(SH), ref(H));
+    // 非平面假设
     thread threadF(&Initializer::FindFundamental,this,ref(vbMatchesInliersF), ref(SF), ref(F));
 
     // Wait until both threads have finished
@@ -359,7 +361,7 @@ cv::Mat Initializer::ComputeF21(const vector<cv::Point2f> &vP1,const vector<cv::
     //基础矩阵F(或本质矩阵E)的内在性质据决定其奇异值分解是[sigma, sigma, 0]
     w.at<float>(2)=0;
 
-    return  u*cv::Mat::diag(w)*vt;
+    return  u*cv::Mat::diag(w)*vt;  //Faft
 }
 
 float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vector<bool> &vbMatchesInliers, float sigma)
@@ -663,7 +665,8 @@ H矩阵分解常见有两种方法：Faugeras SVD-based decomposition 和 Zhang 
 * @param vP3D 其大小为vKeys1大小，表示三角化重投影成功的匹配点的3d点在相机1下的坐标
 * @param vbTriangulated 其大小为vKeys1大小，特征点中哪些可以通过H21重投影成功
 * @param minParallax 设置的最小视差角余弦值参数，输出Rt模型的视差角小于此值则返回失败
-* @param minTriangulated 匹配点中H21重投影成功的个数如果小于此值，返回失败
+* @param minTriangulated 匹配点中H21重投影成功的个数如果小于此
+* 值，返回失败
 * @return 通过输入的H21计算Rt是否成功
 */
 bool Initializer::ReconstructH(vector<bool> &vbMatchesInliers, cv::Mat &H21, cv::Mat &K,
